@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Automated Indoor Greenhouse</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body.dark-mode { background-color: #121212 !important; color: #e0e0e0; }
+    .dark-mode .card { background-color: #1f1f1f !important; color: #e0e0e0; }
+    .dark-mode .card-header { background-color: #2c2c2c !important; }
+    .icon { width: 24px; margin-right: 8px; }
+    .navbar-title { flex-grow: 1; display: flex; justify-content: center; align-items: center; }
+    .btn-group .btn.active { outline: 2px solid black; }
+    .header-icon { width: 36px; height: 36px; }
+  </style>
+</head>
+<body class="bg-light">
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-success px-3">
+  <div class="container-fluid d-flex justify-content-between align-items-center">
+    <div style="width: 36px;"></div>
+    <div class="d-flex align-items-center">
+      <img src="https://img.icons8.com/color/48/000000/leaf.png" class="header-icon me-2" alt="Leaf Left" />
+      <span class="navbar-brand fs-4 fw-bold text-center">Automated Indoor Greenhouse</span>
+      <img src="https://img.icons8.com/color/48/000000/leaf.png" class="header-icon ms-2" alt="Leaf Right" />
+    </div>
+    <div id="esp-status" class="text-white small me-3">
+  ESP32: <span id="esp-status-icon">Checking...</span>
+</div>
+
+    <button class="btn btn-outline-light" id="darkModeToggle" onclick="toggleDarkMode()">
+  🌙 Dark Mode
+</button>
+
+  </div>
+</nav>
+
+<div class="container py-4">
+  <div class="row g-4">
+    <!-- LEFT COLUMN -->
+    <div class="col-md-6">
+      <div class="card shadow-sm">
+        <div class="card-header bg-success text-white">🌡️ Live Sensor Data</div>
+        <div class="card-body">
+          <p><img src="https://img.icons8.com/fluency/48/temperature.png" class="icon">
+          <strong>Temperature:</strong> <span id="temp">--</span>
+          <span class="badge bg-secondary" id="temp-status">--</span></p>
+
+          <p><img src="https://img.icons8.com/fluency/48/hygrometer.png" class="icon">
+          <strong>Humidity:</strong> <span id="humid">--</span>
+          <span class="badge bg-secondary" id="humid-status">--</span></p>
+
+          <p><img src="https://img.icons8.com/fluency/48/wet.png" class="icon">
+          <strong>Soil Moisture:</strong> <span id="soil-status">--</span>
+          <span class="text-muted small" id="soil">(raw)</span></p>
+
+          <p><strong>Time:</strong> <span id="time">--</span></p>
+          <p class="text-muted small" id="last-updated">Last updated: --</p>
+        </div>
+      </div>
+
+      <div class="card shadow-sm mt-4">
+        <div class="card-header bg-success text-white">
+          <img src="https://img.icons8.com/fluency/24/light-on.png" class="icon" />
+          Appliance Status
+        </div>
+        <div class="card-body">
+          <p><img src="https://img.icons8.com/fluency/24/light-on.png" class="icon">
+            <strong>Light:</strong> <span id="light-status" class="badge">--</span></p>
+          <p><img src="https://img.icons8.com/fluency/24/hygrometer.png" class="icon">
+            <strong>Humidifier:</strong> <span id="humidifier-status" class="badge">--</span></p>
+          <p><img src="https://img.icons8.com/ios-filled/24/fan.png" class="icon">
+            <strong>Extractor Fan:</strong> <span id="fan-status" class="badge">--</span></p>
+        </div>
+      </div>
+
+      <div class="card shadow-sm mt-4">
+        <div class="card-header bg-success text-white">
+          <img src="https://img.icons8.com/ios-filled/24/electrical.png" class="icon" />
+          Relay Controls
+        </div>
+        <div class="card-body" id="relay-controls">
+          <label>Light</label>
+          <div class="btn-group mb-2 w-100">
+            <button class="btn btn-light" onclick="setRelay('relay1','auto')">AUTO</button>
+            <button class="btn btn-success" onclick="setRelay('relay1','on')">ON</button>
+            <button class="btn btn-danger" onclick="setRelay('relay1','off')">OFF</button>
+          </div>
+          <label>Humidifier</label>
+          <div class="btn-group mb-2 w-100">
+            <button class="btn btn-light" onclick="setRelay('relay2','auto')">AUTO</button>
+            <button class="btn btn-success" onclick="setRelay('relay2','on')">ON</button>
+            <button class="btn btn-danger" onclick="setRelay('relay2','off')">OFF</button>
+          </div>
+          <label>Extractor Fan</label>
+          <div class="btn-group mb-2 w-100">
+            <button class="btn btn-light" onclick="setRelay('relay3','auto')">AUTO</button>
+            <button class="btn btn-success" onclick="setRelay('relay3','on')">ON</button>
+            <button class="btn btn-danger" onclick="setRelay('relay3','off')">OFF</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="col-md-6">
+      <div class="card shadow-sm">
+        <div class="card-header bg-success text-white">📈 Charts</div>
+        <div class="card-body">
+          <canvas id="tempChart" height="100"></canvas>
+          <canvas id="humidChart" height="100" class="mt-4"></canvas>
+          <canvas id="soilChart" height="100" class="mt-4"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Your full JavaScript goes below (unchanged) -->
+<script>
+
+let lastUpdate = Date.now();
+let lastChartUpdate = 0;
+const chartUpdateInterval = 10000; // 30 seconds
+const maxPoints = 10;
+
+let currentRelays = {relay1: "auto", relay2: "auto", relay3: "auto"};
+
+function toggleDarkMode() {
+  const isDark = document.body.classList.toggle('dark-mode');
+  localStorage.setItem('darkMode', isDark);
+  const button = document.getElementById('darkModeToggle');
+  button.innerHTML = isDark ? '☀️ Light Mode' : '🌙 Dark Mode';
+}
+
+function highlightRelayButtons() {
+  ['relay1', 'relay2', 'relay3'].forEach(relay => {
+    const buttons = document.querySelectorAll(`#relay-controls button[onclick*="${relay}"]`);
+    buttons.forEach(btn => {
+      const mode = btn.innerText.trim().toLowerCase();
+      btn.classList.toggle("active", mode === currentRelays[relay]);
+    });
+  });
+}
+
+function setRelay(relay, mode) {
+  currentRelays[relay] = mode;
+  highlightRelayButtons();
+  fetch('/update_relays', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(currentRelays)
+  }).then(() => {
+    fetch('/force_refresh');
+  });
+}
+
+function fetchRelayStates() {
+  fetch('/get_relays')
+    .then(res => res.json())
+    .then(relays => {
+      currentRelays = relays;
+      highlightRelayButtons();
+    });
+}
+
+function updateRelayStatus(id, state) {
+  const el = document.getElementById(id);
+  el.textContent = state.toUpperCase();
+  el.className = "badge " + (
+    state === "on" ? "bg-success" :
+    state === "off" ? "bg-danger" : "bg-secondary"
+  );
+}
+
+function updateData() {
+  fetch('/sensor_data_live')
+    .then(res => res.json())
+    .then(data => {
+      document.getElementById('temp').textContent = `${data.temperature} °C`;
+      document.getElementById('humid').textContent = `${data.humidity} %`;
+      document.getElementById('soil').textContent = `(${data.soil})`;
+      document.getElementById('time').textContent = data.time;
+      lastUpdate = Date.now();
+
+      const tempStatus = document.getElementById('temp-status');
+      tempStatus.textContent = data.temperature < 17 ? "Too Cold" :
+                               data.temperature <= 25 ? "Optimal" : "Too Hot";
+      tempStatus.className = "badge " + (
+        data.temperature < 17 ? "bg-primary" :
+        data.temperature <= 25 ? "bg-success" : "bg-danger"
+      );
+
+      const humidStatus = document.getElementById('humid-status');
+      humidStatus.textContent = data.humidity < 50 ? "Too Dry" :
+                                data.humidity <= 70 ? "Optimal" : "Too Humid";
+      humidStatus.className = "badge " + (
+        data.humidity < 50 || data.humidity > 70 ? "bg-danger" : "bg-success"
+      );
+
+      const soilStatus = document.getElementById('soil-status');
+      soilStatus.textContent = data.soil < 300 ? "Optimal" :
+                               data.soil < 400 ? "Water Soon" : "Water Now";
+      soilStatus.className = "badge " + (
+        data.soil < 300 ? "bg-success" :
+        data.soil < 400 ? "bg-warning text-dark" : "bg-danger"
+      );
+
+      updateRelayStatus("light-status", data.relay1.toLowerCase());
+      updateRelayStatus("humidifier-status", data.relay2.toLowerCase());
+      updateRelayStatus("fan-status", data.relay3.toLowerCase());
+      highlightRelayButtons();
+
+      const now = Date.now();
+      if (now - lastChartUpdate >= chartUpdateInterval) {
+        lastChartUpdate = now;
+        const timeLabel = new Date().toLocaleTimeString();
+
+        [tempChart, humidChart, soilChart].forEach(chart => {
+          if (chart.data.labels.length >= maxPoints) {
+            chart.data.labels.shift();
+            chart.data.datasets[0].data.shift();
+          }
+        });
+
+        tempChart.data.labels.push(timeLabel);
+        tempChart.data.datasets[0].data.push(data.temperature);
+        humidChart.data.labels.push(timeLabel);
+        humidChart.data.datasets[0].data.push(data.humidity);
+        soilChart.data.labels.push(timeLabel);
+        soilChart.data.datasets[0].data.push(data.soil);
+
+        tempChart.update();
+        humidChart.update();
+        soilChart.update();
+      }
+
+      // Schedule next update after 1 second
+      setTimeout(updateData, 1000);
+    });
+}
+
+function updateTimer() {
+  const diff = Math.floor((Date.now() - lastUpdate) / 1000);
+  document.getElementById('last-updated').textContent = `Last updated: ${diff}s ago`;
+}
+
+function updateESPStatus() {
+  fetch('/esp_status')
+    .then(res => res.json())
+    .then(data => {
+      const icon = document.getElementById("esp-status-icon");
+      icon.innerHTML = data.status === "online" ? "🟢 Connected" : "🔴 Disconnected";
+    });
+}
+
+const tempChart = new Chart(document.getElementById("tempChart"), {
+  type: 'line',
+  data: { labels: [], datasets: [{ label: "Temperature (°C)", data: [], borderColor: "red" }] },
+  options: { scales: { y: { beginAtZero: true, max: 50 } } }
+});
+
+const humidChart = new Chart(document.getElementById("humidChart"), {
+  type: 'line',
+  data: { labels: [], datasets: [{ label: "Humidity (%)", data: [], borderColor: "blue" }] },
+  options: { scales: { y: { beginAtZero: true, max: 100 } } }
+});
+
+const soilChart = new Chart(document.getElementById("soilChart"), {
+  type: 'line',
+  data: { labels: [], datasets: [{ label: "Soil Moisture", data: [], borderColor: "green" }] },
+  options: { scales: { y: { beginAtZero: true, reverse: true } } }
+});
+
+window.onload = () => {
+  const isDark = localStorage.getItem('darkMode') === "true";
+  if (isDark) {
+    document.body.classList.add('dark-mode');
+    document.getElementById('darkModeToggle').innerHTML = '☀️ Light Mode';
+  }
+
+  updateData();
+  setInterval(updateESPStatus, 5000);
+  setInterval(updateTimer, 1000);
+};
+</script>
+
+</body>
+</html>
