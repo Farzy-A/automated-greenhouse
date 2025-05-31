@@ -43,13 +43,21 @@ def dashboard():
         relays=load(manual_file, {})
     )
 
+# ✅ FIXED: Handles JSON properly and avoids 400 error
 @app.route('/sensor_data', methods=['POST'])
 def sensor_data():
-    data = request.json
-    save(sensor_file, data)
-    global latest_data
-    latest_data = data
-    return "OK"
+    try:
+        data = request.get_json()
+        if not data:
+            return "Bad JSON", 400
+        save(sensor_file, data)
+        global latest_data
+        latest_data = data
+        print("✅ Received from ESP32:", data)
+        return "OK", 200
+    except Exception as e:
+        print("❌ Error in /sensor_data:", e)
+        return f"Error: {str(e)}", 400
 
 @app.route('/sensor_data_live')
 def sensor_data_live():
