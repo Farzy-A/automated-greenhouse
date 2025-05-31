@@ -26,7 +26,6 @@ if not os.path.exists(manual_file):
     save(manual_file, default_relays)
 else:
     relays = load(manual_file, {})
-    # If any relay is missing, reset all to AUTO
     if not all(k in relays for k in ["relay1", "relay2", "relay3"]):
         save(manual_file, default_relays)
 
@@ -43,23 +42,26 @@ def dashboard():
         relays=load(manual_file, {})
     )
 
-# ✅ FIXED: Handles JSON safely and logs file save issues
+# ✅ MAX DEBUG /sensor_data route
 @app.route('/sensor_data', methods=['POST'])
 def sensor_data():
+    print("📥 Incoming POST to /sensor_data")
     try:
-        data = request.get_json()
+        data = request.get_json(force=True)
+        print("📦 Raw JSON received:", data)
+
         if not data:
-            print("❌ No JSON data received.")
+            print("❌ No data in JSON body")
             return "Bad JSON", 400
 
         try:
             save(sensor_file, data)
+            print("💾 Saved to sensor.json")
         except Exception as save_error:
             print("❌ Failed to save sensor.json:", save_error)
 
         global latest_data
         latest_data = data
-        print("✅ Received from ESP32:", data)
         return "OK", 200
 
     except Exception as e:
