@@ -1,6 +1,8 @@
 from flask import Flask, request, render_template, jsonify
 import json, time, os
 
+print("🚀 Flask app started (this is the latest version)")
+
 app = Flask(__name__)
 
 sensor_file = 'sensor.json'
