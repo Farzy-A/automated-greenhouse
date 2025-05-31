@@ -22,7 +22,7 @@ def save(file, data):
     with open(file, 'w') as f:
         json.dump(data, f)
 
-# ✅ Force AUTO mode on startup (or create file if missing)
+# ✅ Force AUTO mode on startup
 default_relays = {"relay1": "auto", "relay2": "auto", "relay3": "auto"}
 if not os.path.exists(manual_file):
     save(manual_file, default_relays)
@@ -48,12 +48,15 @@ def dashboard():
 @app.route('/sensor_data', methods=['POST'])
 def sensor_data():
     print("📥 Incoming POST to /sensor_data")
+    print("🔎 Headers:", dict(request.headers))
+    print("📄 Raw body:", request.data.decode('utf-8'))
+
     try:
         data = request.get_json(force=True)
-        print("📦 Raw JSON received:", data)
+        print("📦 Parsed JSON:", data)
 
         if not data:
-            print("❌ No data in JSON body")
+            print("❌ No data parsed from JSON")
             return "Bad JSON", 400
 
         try:
@@ -97,14 +100,12 @@ def update_relays():
 def force_refresh():
     return "Triggered"
 
-# ✅ ESP32 Ping Endpoint
 @app.route('/ping', methods=['POST'])
 def ping():
     global esp_last_seen
     esp_last_seen = time.time()
     return '', 204
 
-# ✅ Dashboard checks ESP32 status
 @app.route('/esp_status')
 def esp_status():
     if time.time() - esp_last_seen < 10:
