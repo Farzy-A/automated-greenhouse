@@ -108,7 +108,7 @@ def ping():
 
 @app.route('/esp_status')
 def esp_status():
-    if time.time() - esp_last_seen < 20:
+    if time.time() - esp_last_seen < 30:
         return jsonify({'status': 'online'})
     else:
         return jsonify({'status': 'offline'})
