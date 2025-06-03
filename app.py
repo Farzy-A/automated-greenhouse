@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template, jsonify
 import json, time, os
 
-print("🚀 Flask app started (this is the latest version)")
+print("🚀 Flask app started (updated version)")
 
 app = Flask(__name__)
 
@@ -9,9 +9,9 @@ sensor_file = 'sensor.json'
 threshold_file = 'thresholds.json'
 manual_file = 'manual.json'
 
-esp_last_seen = 0  # Track ESP32 last ping time
+esp_last_seen = 0
 
-def load(file, default):  # Load JSON with fallback
+def load(file, default):
     try:
         with open(file) as f:
             return json.load(f)
@@ -22,7 +22,6 @@ def save(file, data):
     with open(file, 'w') as f:
         json.dump(data, f)
 
-# ✅ Force AUTO mode on startup
 default_relays = {"relay1": "auto", "relay2": "auto", "relay3": "auto"}
 if not os.path.exists(manual_file):
     save(manual_file, default_relays)
@@ -44,33 +43,25 @@ def dashboard():
         relays=load(manual_file, {})
     )
 
-# ✅ MAX DEBUG /sensor_data route
 @app.route('/sensor_data', methods=['POST'])
 def sensor_data():
     print("📥 Incoming POST to /sensor_data")
-    print("🔎 Headers:", dict(request.headers))
     print("📄 Raw body:", request.data.decode('utf-8'))
 
     try:
         data = request.get_json(force=True)
         print("📦 Parsed JSON:", data)
-
-        if not data:
-            print("❌ No data parsed from JSON")
-            return "Bad JSON", 400
-
-        try:
+        if data:
             save(sensor_file, data)
             print("💾 Saved to sensor.json")
-        except Exception as save_error:
-            print("❌ Failed to save sensor.json:", save_error)
-
-        global latest_data
-        latest_data = data
-        return "OK", 200
-
+            global latest_data
+            latest_data = data
+            return "OK", 200
+        else:
+            print("❌ No data parsed")
+            return "Bad JSON", 400
     except Exception as e:
-        print("❌ Error in /sensor_data:", e)
+        print("❌ Error:", e)
         return f"Error: {str(e)}", 400
 
 @app.route('/sensor_data_live')
@@ -84,6 +75,7 @@ def get_thresholds():
 @app.route('/get_relays')
 def get_relays():
     relays = load(manual_file, {})
+    print("📤 /get_relays returning:", relays)
     return jsonify({k: v.lower() for k, v in relays.items()})
 
 @app.route('/update_thresholds', methods=['POST'])
@@ -94,7 +86,8 @@ def update_thresholds():
 @app.route('/update_relays', methods=['POST'])
 def update_relays():
     save(manual_file, request.json)
-    return jsonify(status="ok")
+    print("📝 Manual relay update:", request.json)
+    return jsonify(status="ok", refresh_relay_now=True)
 
 @app.route('/force_refresh')
 def force_refresh():
@@ -108,10 +101,7 @@ def ping():
 
 @app.route('/esp_status')
 def esp_status():
-    if time.time() - esp_last_seen < 30:
-        return jsonify({'status': 'online'})
-    else:
-        return jsonify({'status': 'offline'})
+    return jsonify({'status': 'online' if time.time() - esp_last_seen < 30 else 'offline'})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
