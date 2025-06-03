@@ -1,13 +1,14 @@
 from flask import Flask, request, render_template, jsonify
 import json, time, os
 
-print("🚀 Flask app started (this is the latest version)")
+print("🚀 Flask app started (updated with refresh logic)")
 
 app = Flask(__name__)
 
 sensor_file = 'sensor.json'
 threshold_file = 'thresholds.json'
 manual_file = 'manual.json'
+refresh_file = 'refresh.txt'
 
 esp_last_seen = 0  # Track ESP32 last ping time
 
@@ -22,10 +23,14 @@ def save(file, data):
     with open(file, 'w') as f:
         json.dump(data, f)
 
-# ✅ Only create default manual.json if it doesn't exist
+# ✅ Ensure required files exist
 if not os.path.exists(manual_file):
     default_relays = {"relay1": "auto", "relay2": "auto", "relay3": "auto"}
     save(manual_file, default_relays)
+
+if not os.path.exists(refresh_file):
+    with open(refresh_file, 'w') as f:
+        f.write(str(time.time()))
 
 latest_data = load(sensor_file, {
     "temperature": 0, "humidity": 0, "soil": 0, "time": "--",
@@ -40,7 +45,6 @@ def dashboard():
         relays=load(manual_file, {})
     )
 
-# ✅ MAX DEBUG /sensor_data route
 @app.route('/sensor_data', methods=['POST'])
 def sensor_data():
     print("📥 Incoming POST to /sensor_data")
@@ -89,8 +93,22 @@ def update_thresholds():
 
 @app.route('/update_relays', methods=['POST'])
 def update_relays():
-    save(manual_file, request.json)
+    data = request.json
+    save(manual_file, data)
+
+    # ✅ Update refresh.txt to trigger ESP32 fetch
+    with open(refresh_file, 'w') as f:
+        f.write(str(time.time()))
+
     return jsonify(status="ok")
+
+@app.route('/refresh.txt')
+def refresh_txt():
+    try:
+        with open(refresh_file) as f:
+            return f.read()
+    except:
+        return str(time.time())  # fallback
 
 @app.route('/force_refresh')
 def force_refresh():
