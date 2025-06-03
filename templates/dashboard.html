@@ -154,9 +154,13 @@ function setRelay(relay, mode) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(currentRelays)
   }).then(() => {
-    fetch('/force_refresh');
+    // ✅ Trigger an immediate sync by simulating a /get_relays fetch
+    setTimeout(() => fetch('/get_relays'), 100);
+    document.getElementById('last-updated').textContent = 'Relay command sent...';
   });
 }
+
+
 
 function fetchRelayStates() {
   fetch('/get_relays')
