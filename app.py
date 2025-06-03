@@ -22,14 +22,10 @@ def save(file, data):
     with open(file, 'w') as f:
         json.dump(data, f)
 
-# ✅ Force AUTO mode on startup
-default_relays = {"relay1": "auto", "relay2": "auto", "relay3": "auto"}
+# ✅ Only create default manual.json if it doesn't exist
 if not os.path.exists(manual_file):
+    default_relays = {"relay1": "auto", "relay2": "auto", "relay3": "auto"}
     save(manual_file, default_relays)
-else:
-    relays = load(manual_file, {})
-    if not all(k in relays for k in ["relay1", "relay2", "relay3"]):
-        save(manual_file, default_relays)
 
 latest_data = load(sensor_file, {
     "temperature": 0, "humidity": 0, "soil": 0, "time": "--",
