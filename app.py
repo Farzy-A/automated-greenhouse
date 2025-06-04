@@ -63,20 +63,20 @@ def sensor_data():
         for key in ["relay1", "relay2", "relay3"]:
             mode = manual_modes.get(key, "auto").lower()
 
-            # Only accept actual ESP value if in auto mode
             if mode == "auto":
-    new_value = data.get(key)
-    prev_value = existing_state.get(key)
+                new_value = data.get(key)
+                prev_value = existing_state.get(key)
 
-    # Only update if ESP reports something truly new
-    if new_value not in ["on", "off"]:
-        data[key] = prev_value  # ignore junk
-    elif new_value != prev_value:
-        print(f"✅ Relay {key} changed via AUTO: {prev_value} → {new_value}")
-        data[key] = new_value
-    else:
-        data[key] = prev_value
-
+                # Only update if ESP reports something truly new
+                if new_value not in ["on", "off"]:
+                    data[key] = prev_value
+                elif new_value != prev_value:
+                    print(f"✅ Relay {key} changed via AUTO: {prev_value} → {new_value}")
+                    data[key] = new_value
+                else:
+                    data[key] = prev_value
+            else:
+                data[key] = mode  # force manual mode
 
         save(sensor_file, data)
         print("💾 Updated sensor.json (with trusted relay state)")
@@ -97,8 +97,7 @@ def sensor_data_live():
     for key in ["relay1", "relay2", "relay3"]:
         mode = manual_modes.get(key, "auto").lower()
         if mode in ["on", "off"]:
-            data[key] = mode  # Lock dashboard to manual mode
-        # else keep current value from ESP
+            data[key] = mode
 
     return jsonify(data)
 
@@ -128,6 +127,7 @@ def update_relays():
             current[key] = mode
         elif key in current:
             del current[key]  # remove stale state if switching to auto
+
     save(sensor_file, current)
 
     with open(refresh_file, 'w') as f:
