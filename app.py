@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template, jsonify
 import json, time, os
 
-print("🚀 Flask app started (auto mode & sensor sync fixed)")
+print("🚀 Flask app started (reverted to stable AUTO + manual relay control)")
 
 app = Flask(__name__)
 
@@ -47,59 +47,27 @@ def dashboard():
 
 @app.route('/sensor_data', methods=['POST'])
 def sensor_data():
-    print("📥 Incoming POST to /sensor_data")
-    print("📄 Raw body:", request.data.decode('utf-8'))
+    data = request.get_json(force=True)
 
-    try:
-        data = request.get_json(force=True)
-        print("📦 Parsed JSON:", data)
-
-        if not data:
-            return "Bad JSON", 400
-
-        manual_modes = load(manual_file, {})
-        existing_state = load(sensor_file, {})
-
-        for key in ["relay1", "relay2", "relay3"]:
-            mode = manual_modes.get(key, "auto").lower()
-
-            if mode == "auto":
-                new_value = data.get(key)
-                prev_value = existing_state.get(key)
-
-                # Only update if ESP reports something truly new
-                if new_value not in ["on", "off"]:
-                    data[key] = prev_value
-                elif new_value != prev_value:
-                    print(f"✅ Relay {key} changed via AUTO: {prev_value} → {new_value}")
-                    data[key] = new_value
-                else:
-                    data[key] = prev_value
-            else:
-                data[key] = mode  # force manual mode
-
-        save(sensor_file, data)
-        print("💾 Updated sensor.json (with trusted relay state)")
-
-        global latest_data
-        latest_data = data
-        return "OK", 200
-
-    except Exception as e:
-        print("❌ Error in /sensor_data:", e)
-        return f"Error: {str(e)}", 400
-
-@app.route('/sensor_data_live')
-def sensor_data_live():
-    data = latest_data.copy()
     manual_modes = load(manual_file, {})
+    existing_state = load(sensor_file, {})
 
     for key in ["relay1", "relay2", "relay3"]:
         mode = manual_modes.get(key, "auto").lower()
         if mode in ["on", "off"]:
-            data[key] = mode
+            data[key] = mode  # Manual mode overrides everything
+        else:
+            data[key] = data.get(key, existing_state.get(key, "off"))  # fallback to ESP-reported state
 
-    return jsonify(data)
+    save(sensor_file, data)
+
+    global latest_data
+    latest_data = data
+    return "OK"
+
+@app.route('/sensor_data_live')
+def sensor_data_live():
+    return jsonify(latest_data)  # ✅ Serve from RAM (no disk lag)
 
 @app.route('/get_thresholds')
 def get_thresholds():
@@ -126,8 +94,7 @@ def update_relays():
         if mode in ["on", "off"]:
             current[key] = mode
         elif key in current:
-            del current[key]  # remove stale state if switching to auto
-
+            del current[key]  # Remove stale value when switching to auto
     save(sensor_file, current)
 
     with open(refresh_file, 'w') as f:
