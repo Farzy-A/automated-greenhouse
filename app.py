@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template, jsonify
 import json, time, os
 
-print("🚀 Flask app started (stable synced version)")
+print("🚀 Flask app started (with instant appliance status sync)")
 
 app = Flask(__name__)
 
@@ -25,7 +25,8 @@ def save(file, data):
 
 # Ensure required files exist
 if not os.path.exists(manual_file):
-    save(manual_file, {"relay1": "auto", "relay2": "auto", "relay3": "auto"})
+    default_relays = {"relay1": "auto", "relay2": "auto", "relay3": "auto"}
+    save(manual_file, default_relays)
 
 if not os.path.exists(refresh_file):
     with open(refresh_file, 'w') as f:
@@ -33,7 +34,7 @@ if not os.path.exists(refresh_file):
 
 latest_data = load(sensor_file, {
     "temperature": 0, "humidity": 0, "soil": 0, "time": "--",
-    "relay1": "off", "relay2": "off", "relay3": "off"
+    "relay1": "auto", "relay2": "auto", "relay3": "auto"
 })
 
 @app.route('/')
@@ -46,51 +47,44 @@ def dashboard():
 
 @app.route('/sensor_data', methods=['POST'])
 def sensor_data():
+    print("📥 Incoming POST to /sensor_data")
+    print("🔎 Headers:", dict(request.headers))
+    print("📄 Raw body:", request.data.decode('utf-8'))
+
     try:
         data = request.get_json(force=True)
-        manual_modes = load(manual_file, {})
-        current_state = load(sensor_file, {})
+        print("📦 Parsed JSON:", data)
 
-        # ✅ Only update relay values if in auto
-        for key in ["relay1", "relay2", "relay3"]:
-            mode = manual_modes.get(key, "auto").lower()
-            incoming = data.get(key)
+        if not data:
+            print("❌ No data parsed from JSON")
+            return "Bad JSON", 400
 
-            if mode == "auto":
-                if incoming in ["on", "off"]:
-                    data[key] = incoming
-                else:
-                    data[key] = current_state.get(key, "off")
-            else:
-                data[key] = mode  # force manual override
+        try:
+            save(sensor_file, data)
+            print("💾 Saved to sensor.json")
+        except Exception as save_error:
+            print("❌ Failed to save sensor.json:", save_error)
 
-        save(sensor_file, data)
         global latest_data
         latest_data = data
         return "OK", 200
 
     except Exception as e:
-        print("❌ Error:", e)
+        print("❌ Error in /sensor_data:", e)
         return f"Error: {str(e)}", 400
 
 @app.route('/sensor_data_live')
 def sensor_data_live():
-    # ✅ Always serve the latest relay values based on manual.json
-    data = latest_data.copy()
-    manual = load(manual_file, {})
-    for key in ["relay1", "relay2", "relay3"]:
-        mode = manual.get(key, "auto").lower()
-        if mode in ["on", "off"]:
-            data[key] = mode
-    return jsonify(data)
-
-@app.route('/get_relays')
-def get_relays():
-    return jsonify(load(manual_file, {}))
+    return jsonify(latest_data)
 
 @app.route('/get_thresholds')
 def get_thresholds():
     return jsonify(load(threshold_file, {}))
+
+@app.route('/get_relays')
+def get_relays():
+    relays = load(manual_file, {})
+    return jsonify({k: v.lower() for k, v in relays.items()})
 
 @app.route('/update_thresholds', methods=['POST'])
 def update_thresholds():
@@ -102,15 +96,14 @@ def update_relays():
     data = request.json
     save(manual_file, data)
 
-    # ✅ Update sensor.json immediately for visual feedback
-    state = load(sensor_file, {})
+    # ✅ Instantly reflect relay mode change in sensor.json for the dashboard
+    current = load(sensor_file, {})
     for key in ["relay1", "relay2", "relay3"]:
-        mode = data.get(key, "auto").lower()
-        if mode in ["on", "off"]:
-            state[key] = mode
-    save(sensor_file, state)
+        if key in data:
+            current[key] = data[key].lower()
+    save(sensor_file, current)
 
-    # ✅ Update refresh.txt to trigger ESP32
+    # ✅ Notify ESP32 to fetch immediately
     with open(refresh_file, 'w') as f:
         f.write(str(time.time()))
 
@@ -136,7 +129,10 @@ def ping():
 
 @app.route('/esp_status')
 def esp_status():
-    return jsonify({'status': 'online' if time.time() - esp_last_seen < 30 else 'offline'})
+    if time.time() - esp_last_seen < 30:
+        return jsonify({'status': 'online'})
+    else:
+        return jsonify({'status': 'offline'})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
