@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template, jsonify
 import json, time, os
 
-print("🚀 Flask app started (with instant appliance status sync)")
+print("🚀 Flask app started (final with real-time appliance status fix)")
 
 app = Flask(__name__)
 
@@ -75,7 +75,8 @@ def sensor_data():
 
 @app.route('/sensor_data_live')
 def sensor_data_live():
-    return jsonify(latest_data)
+    # ✅ Always serve the latest data from disk to reflect instant relay changes
+    return jsonify(load(sensor_file, {}))
 
 @app.route('/get_thresholds')
 def get_thresholds():
