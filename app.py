@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template, jsonify
 import json, time, os
 
-print("🚀 Flask app started (updated with refresh logic)")
+print("🚀 Flask app started (with instant appliance status sync)")
 
 app = Flask(__name__)
 
@@ -12,7 +12,7 @@ refresh_file = 'refresh.txt'
 
 esp_last_seen = 0  # Track ESP32 last ping time
 
-def load(file, default):  # Load JSON with fallback
+def load(file, default):
     try:
         with open(file) as f:
             return json.load(f)
@@ -23,7 +23,7 @@ def save(file, data):
     with open(file, 'w') as f:
         json.dump(data, f)
 
-# ✅ Ensure required files exist
+# Ensure required files exist
 if not os.path.exists(manual_file):
     default_relays = {"relay1": "auto", "relay2": "auto", "relay3": "auto"}
     save(manual_file, default_relays)
@@ -96,7 +96,14 @@ def update_relays():
     data = request.json
     save(manual_file, data)
 
-    # ✅ Update refresh.txt to trigger ESP32 fetch
+    # ✅ Instantly reflect relay mode change in sensor.json for the dashboard
+    current = load(sensor_file, {})
+    for key in ["relay1", "relay2", "relay3"]:
+        if key in data:
+            current[key] = data[key].lower()
+    save(sensor_file, current)
+
+    # ✅ Notify ESP32 to fetch immediately
     with open(refresh_file, 'w') as f:
         f.write(str(time.time()))
 
@@ -108,7 +115,7 @@ def refresh_txt():
         with open(refresh_file) as f:
             return f.read()
     except:
-        return str(time.time())  # fallback
+        return str(time.time())
 
 @app.route('/force_refresh')
 def force_refresh():
