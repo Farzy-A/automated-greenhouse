@@ -8,6 +8,14 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
+    .last-updated-text {
+  color: #6c757d; /* Light mode default muted grey */
+}
+
+body.dark-mode .last-updated-text {
+  color: #bbbbbb; /* Brighter grey for dark mode visibility */
+}
+
     body.dark-mode { background-color: #121212 !important; color: #e0e0e0; }
     .dark-mode .card { background-color: #1f1f1f !important; color: #e0e0e0; }
     .dark-mode .card-header { background-color: #2c2c2c !important; }
@@ -58,7 +66,8 @@
           <span class="text-muted small" id="soil">(raw)</span></p>
 
           <p><strong>Time:</strong> <span id="time">--</span></p>
-          <p class="text-muted small" id="last-updated">Last updated: --</p>
+          <p class="last-updated-text small" id="last-updated">Last updated: --</p>
+
         </div>
       </div>
 
