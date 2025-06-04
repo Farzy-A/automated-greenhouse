@@ -81,7 +81,17 @@ def sensor_data():
 
 @app.route('/sensor_data_live')
 def sensor_data_live():
-    return jsonify(latest_data)  # ✅ faster, RAM only
+    data = latest_data.copy()
+    manual_modes = load(manual_file, {})
+
+    for key in ["relay1", "relay2", "relay3"]:
+        mode = manual_modes.get(key, "auto").lower()
+        if mode in ["on", "off"]:
+            data[key] = mode  # Lock dashboard to manual mode
+        # else: keep value from ESP/Uno ("auto" result)
+
+    return jsonify(data)
+
 
 
 @app.route('/get_thresholds')
