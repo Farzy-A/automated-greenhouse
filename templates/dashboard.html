@@ -245,7 +245,9 @@ function updateData() {
 
 function updateTimer() {
   const diff = Math.floor((Date.now() - lastUpdate) / 1000);
-  document.getElementById('last-updated').textContent = `Last updated: ${diff}s ago`;
+  document.getElementById('last-updated').textContent =
+  diff <= 2 ? "✅ Live" : `⚠️ Delay: ${diff}s`;
+
 }
 
 function updateESPStatus() {
