@@ -65,15 +65,18 @@ def sensor_data():
 
             # Only accept actual ESP value if in auto mode
             if mode == "auto":
-                new_value = data.get(key)
-                prev_value = existing_state.get(key)
-                if new_value != prev_value:
-                    print(f"ℹ️ Relay {key} updated via AUTO: {prev_value} → {new_value}")
-                    data[key] = new_value
-                else:
-                    data[key] = prev_value
-            else:
-                data[key] = mode  # force manual mode
+    new_value = data.get(key)
+    prev_value = existing_state.get(key)
+
+    # Only update if ESP reports something truly new
+    if new_value not in ["on", "off"]:
+        data[key] = prev_value  # ignore junk
+    elif new_value != prev_value:
+        print(f"✅ Relay {key} changed via AUTO: {prev_value} → {new_value}")
+        data[key] = new_value
+    else:
+        data[key] = prev_value
+
 
         save(sensor_file, data)
         print("💾 Updated sensor.json (with trusted relay state)")
