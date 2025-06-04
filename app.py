@@ -57,16 +57,23 @@ def sensor_data():
         if not data:
             return "Bad JSON", 400
 
-        # ✅ Trust Uno's relay ON/OFF state when in AUTO mode
         manual_modes = load(manual_file, {})
         existing_state = load(sensor_file, {})
 
         for key in ["relay1", "relay2", "relay3"]:
             mode = manual_modes.get(key, "auto").lower()
-            if mode in ["on", "off"]:
-                data[key] = mode  # force manual override
+
+            # Only accept actual ESP value if in auto mode
+            if mode == "auto":
+                new_value = data.get(key)
+                prev_value = existing_state.get(key)
+                if new_value != prev_value:
+                    print(f"ℹ️ Relay {key} updated via AUTO: {prev_value} → {new_value}")
+                    data[key] = new_value
+                else:
+                    data[key] = prev_value
             else:
-                data[key] = data.get(key, existing_state.get(key, "off"))  # accept auto result from Uno/ESP
+                data[key] = mode  # force manual mode
 
         save(sensor_file, data)
         print("💾 Updated sensor.json (with trusted relay state)")
@@ -88,6 +95,7 @@ def sensor_data_live():
         mode = manual_modes.get(key, "auto").lower()
         if mode in ["on", "off"]:
             data[key] = mode  # Lock dashboard to manual mode
+        # else keep current value from ESP
 
     return jsonify(data)
 
@@ -110,17 +118,15 @@ def update_relays():
     data = request.json
     save(manual_file, data)
 
-    # ✅ Reflect ON/OFF only — if "auto", remove stale relay status
     current = load(sensor_file, {})
     for key in ["relay1", "relay2", "relay3"]:
         mode = data.get(key, "").lower()
         if mode in ["on", "off"]:
-            current[key] = mode  # show manual status immediately
+            current[key] = mode
         elif key in current:
-            del current[key]  # remove stale value when switching to auto
+            del current[key]  # remove stale state if switching to auto
     save(sensor_file, current)
 
-    # ✅ Trigger ESP32 to fetch
     with open(refresh_file, 'w') as f:
         f.write(str(time.time()))
 
