@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template, jsonify
 import json, time, os
 
-print("🚀 Flask app started (final with real-time appliance status fix)")
+print("🚀 Flask app started (final fix: no 'auto' in appliance status)")
 
 app = Flask(__name__)
 
@@ -34,7 +34,7 @@ if not os.path.exists(refresh_file):
 
 latest_data = load(sensor_file, {
     "temperature": 0, "humidity": 0, "soil": 0, "time": "--",
-    "relay1": "auto", "relay2": "auto", "relay3": "auto"
+    "relay1": "off", "relay2": "off", "relay3": "off"
 })
 
 @app.route('/')
@@ -75,8 +75,7 @@ def sensor_data():
 
 @app.route('/sensor_data_live')
 def sensor_data_live():
-    # ✅ Always serve the latest data from disk to reflect instant relay changes
-    return jsonify(load(sensor_file, {}))
+    return jsonify(load(sensor_file, {}))  # Always load fresh from disk
 
 @app.route('/get_thresholds')
 def get_thresholds():
@@ -95,16 +94,18 @@ def update_thresholds():
 @app.route('/update_relays', methods=['POST'])
 def update_relays():
     data = request.json
-    save(manual_file, data)
+    save(manual_file, data)  # Save full relay control modes
 
-    # ✅ Instantly reflect relay mode change in sensor.json for the dashboard
+    # ✅ Reflect only ON/OFF in sensor.json for dashboard status — ignore "auto"
     current = load(sensor_file, {})
     for key in ["relay1", "relay2", "relay3"]:
         if key in data:
-            current[key] = data[key].lower()
+            mode = data[key].lower()
+            if mode in ["on", "off"]:
+                current[key] = mode  # only update if ON/OFF — skip "auto"
     save(sensor_file, current)
 
-    # ✅ Notify ESP32 to fetch immediately
+    # ✅ Notify ESP32 to fetch changes
     with open(refresh_file, 'w') as f:
         f.write(str(time.time()))
 
