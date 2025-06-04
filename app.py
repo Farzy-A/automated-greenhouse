@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template, jsonify
 import json, time, os
 
-print("🚀 Flask app started (final fix: no 'auto' in appliance status)")
+print("🚀 Flask app started (final relay sync & flicker fix)")
 
 app = Flask(__name__)
 
@@ -48,7 +48,6 @@ def dashboard():
 @app.route('/sensor_data', methods=['POST'])
 def sensor_data():
     print("📥 Incoming POST to /sensor_data")
-    print("🔎 Headers:", dict(request.headers))
     print("📄 Raw body:", request.data.decode('utf-8'))
 
     try:
@@ -56,14 +55,21 @@ def sensor_data():
         print("📦 Parsed JSON:", data)
 
         if not data:
-            print("❌ No data parsed from JSON")
             return "Bad JSON", 400
 
-        try:
-            save(sensor_file, data)
-            print("💾 Saved to sensor.json")
-        except Exception as save_error:
-            print("❌ Failed to save sensor.json:", save_error)
+        # 🔒 Override relay1–3 state based on manual mode if it's on/off (to prevent flicker)
+        manual_modes = load(manual_file, {})
+        existing_state = load(sensor_file, {})
+
+        for key in ["relay1", "relay2", "relay3"]:
+            mode = manual_modes.get(key, "auto").lower()
+            if mode in ["on", "off"]:
+                data[key] = mode  # lock relay state to manual mode
+            else:
+                data[key] = existing_state.get(key, "off")  # preserve last known ON/OFF state
+
+        save(sensor_file, data)
+        print("💾 Updated sensor.json (trusted relay state)")
 
         global latest_data
         latest_data = data
@@ -75,7 +81,7 @@ def sensor_data():
 
 @app.route('/sensor_data_live')
 def sensor_data_live():
-    return jsonify(load(sensor_file, {}))  # Always load fresh from disk
+    return jsonify(load(sensor_file, {}))  # Always read fresh from disk
 
 @app.route('/get_thresholds')
 def get_thresholds():
@@ -94,18 +100,18 @@ def update_thresholds():
 @app.route('/update_relays', methods=['POST'])
 def update_relays():
     data = request.json
-    save(manual_file, data)  # Save full relay control modes
+    save(manual_file, data)
 
-    # ✅ Reflect only ON/OFF in sensor.json for dashboard status — ignore "auto"
+    # ✅ Reflect ON/OFF in sensor.json for dashboard (but not "auto")
     current = load(sensor_file, {})
     for key in ["relay1", "relay2", "relay3"]:
-        if key in data:
-            mode = data[key].lower()
-            if mode in ["on", "off"]:
-                current[key] = mode  # only update if ON/OFF — skip "auto"
+        mode = data.get(key, "").lower()
+        if mode in ["on", "off"]:
+            current[key] = mode  # show real status
+        # else: skip "auto" to preserve last known ON/OFF
     save(sensor_file, current)
 
-    # ✅ Notify ESP32 to fetch changes
+    # ✅ Trigger ESP32 update
     with open(refresh_file, 'w') as f:
         f.write(str(time.time()))
 
