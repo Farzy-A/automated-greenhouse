@@ -88,11 +88,8 @@ def sensor_data_live():
         mode = manual_modes.get(key, "auto").lower()
         if mode in ["on", "off"]:
             data[key] = mode  # Lock dashboard to manual mode
-        # else: keep value from ESP/Uno ("auto" result)
 
     return jsonify(data)
-
-
 
 @app.route('/get_thresholds')
 def get_thresholds():
@@ -113,12 +110,14 @@ def update_relays():
     data = request.json
     save(manual_file, data)
 
-    # ✅ Reflect ON/OFF only — skip writing "auto" to sensor.json
+    # ✅ Reflect ON/OFF only — if "auto", remove stale relay status
     current = load(sensor_file, {})
     for key in ["relay1", "relay2", "relay3"]:
         mode = data.get(key, "").lower()
         if mode in ["on", "off"]:
-            current[key] = mode  # show real status
+            current[key] = mode  # show manual status immediately
+        elif key in current:
+            del current[key]  # remove stale value when switching to auto
     save(sensor_file, current)
 
     # ✅ Trigger ESP32 to fetch
