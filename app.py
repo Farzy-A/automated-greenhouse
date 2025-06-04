@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template, jsonify
 import json, time, os
 
-print("🚀 Flask app started (reverted to stable AUTO + manual relay control)")
+print("🚀 Flask app started (stable synced version)")
 
 app = Flask(__name__)
 
@@ -25,8 +25,7 @@ def save(file, data):
 
 # Ensure required files exist
 if not os.path.exists(manual_file):
-    default_relays = {"relay1": "auto", "relay2": "auto", "relay3": "auto"}
-    save(manual_file, default_relays)
+    save(manual_file, {"relay1": "auto", "relay2": "auto", "relay3": "auto"})
 
 if not os.path.exists(refresh_file):
     with open(refresh_file, 'w') as f:
@@ -47,36 +46,51 @@ def dashboard():
 
 @app.route('/sensor_data', methods=['POST'])
 def sensor_data():
-    data = request.get_json(force=True)
+    try:
+        data = request.get_json(force=True)
+        manual_modes = load(manual_file, {})
+        current_state = load(sensor_file, {})
 
-    manual_modes = load(manual_file, {})
-    existing_state = load(sensor_file, {})
+        # ✅ Only update relay values if in auto
+        for key in ["relay1", "relay2", "relay3"]:
+            mode = manual_modes.get(key, "auto").lower()
+            incoming = data.get(key)
 
-    for key in ["relay1", "relay2", "relay3"]:
-        mode = manual_modes.get(key, "auto").lower()
-        if mode in ["on", "off"]:
-            data[key] = mode  # Manual mode overrides everything
-        else:
-            data[key] = data.get(key, existing_state.get(key, "off"))  # fallback to ESP-reported state
+            if mode == "auto":
+                if incoming in ["on", "off"]:
+                    data[key] = incoming
+                else:
+                    data[key] = current_state.get(key, "off")
+            else:
+                data[key] = mode  # force manual override
 
-    save(sensor_file, data)
+        save(sensor_file, data)
+        global latest_data
+        latest_data = data
+        return "OK", 200
 
-    global latest_data
-    latest_data = data
-    return "OK"
+    except Exception as e:
+        print("❌ Error:", e)
+        return f"Error: {str(e)}", 400
 
 @app.route('/sensor_data_live')
 def sensor_data_live():
-    return jsonify(latest_data)  # ✅ Serve from RAM (no disk lag)
+    # ✅ Always serve the latest relay values based on manual.json
+    data = latest_data.copy()
+    manual = load(manual_file, {})
+    for key in ["relay1", "relay2", "relay3"]:
+        mode = manual.get(key, "auto").lower()
+        if mode in ["on", "off"]:
+            data[key] = mode
+    return jsonify(data)
+
+@app.route('/get_relays')
+def get_relays():
+    return jsonify(load(manual_file, {}))
 
 @app.route('/get_thresholds')
 def get_thresholds():
     return jsonify(load(threshold_file, {}))
-
-@app.route('/get_relays')
-def get_relays():
-    relays = load(manual_file, {})
-    return jsonify({k: v.lower() for k, v in relays.items()})
 
 @app.route('/update_thresholds', methods=['POST'])
 def update_thresholds():
@@ -88,15 +102,15 @@ def update_relays():
     data = request.json
     save(manual_file, data)
 
-    current = load(sensor_file, {})
+    # ✅ Update sensor.json immediately for visual feedback
+    state = load(sensor_file, {})
     for key in ["relay1", "relay2", "relay3"]:
-        mode = data.get(key, "").lower()
+        mode = data.get(key, "auto").lower()
         if mode in ["on", "off"]:
-            current[key] = mode
-        elif key in current:
-            del current[key]  # Remove stale value when switching to auto
-    save(sensor_file, current)
+            state[key] = mode
+    save(sensor_file, state)
 
+    # ✅ Update refresh.txt to trigger ESP32
     with open(refresh_file, 'w') as f:
         f.write(str(time.time()))
 
@@ -122,10 +136,7 @@ def ping():
 
 @app.route('/esp_status')
 def esp_status():
-    if time.time() - esp_last_seen < 30:
-        return jsonify({'status': 'online'})
-    else:
-        return jsonify({'status': 'offline'})
+    return jsonify({'status': 'online' if time.time() - esp_last_seen < 30 else 'offline'})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
