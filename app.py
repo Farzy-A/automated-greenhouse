@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template, jsonify
 import json, time, os
 
-print("🚀 Flask app started (final relay sync & flicker fix)")
+print("🚀 Flask app started (auto mode & sensor sync fixed)")
 
 app = Flask(__name__)
 
@@ -57,19 +57,19 @@ def sensor_data():
         if not data:
             return "Bad JSON", 400
 
-        # 🔒 Override relay1–3 state based on manual mode if it's on/off (to prevent flicker)
+        # ✅ Trust Uno's relay ON/OFF state when in AUTO mode
         manual_modes = load(manual_file, {})
         existing_state = load(sensor_file, {})
 
         for key in ["relay1", "relay2", "relay3"]:
             mode = manual_modes.get(key, "auto").lower()
             if mode in ["on", "off"]:
-                data[key] = mode  # lock relay state to manual mode
+                data[key] = mode  # force manual override
             else:
-                data[key] = existing_state.get(key, "off")  # preserve last known ON/OFF state
+                data[key] = data.get(key, existing_state.get(key, "off"))  # accept auto result from Uno/ESP
 
         save(sensor_file, data)
-        print("💾 Updated sensor.json (trusted relay state)")
+        print("💾 Updated sensor.json (with trusted relay state)")
 
         global latest_data
         latest_data = data
@@ -102,16 +102,15 @@ def update_relays():
     data = request.json
     save(manual_file, data)
 
-    # ✅ Reflect ON/OFF in sensor.json for dashboard (but not "auto")
+    # ✅ Reflect ON/OFF only — skip writing "auto" to sensor.json
     current = load(sensor_file, {})
     for key in ["relay1", "relay2", "relay3"]:
         mode = data.get(key, "").lower()
         if mode in ["on", "off"]:
             current[key] = mode  # show real status
-        # else: skip "auto" to preserve last known ON/OFF
     save(sensor_file, current)
 
-    # ✅ Trigger ESP32 update
+    # ✅ Trigger ESP32 to fetch
     with open(refresh_file, 'w') as f:
         f.write(str(time.time()))
 
