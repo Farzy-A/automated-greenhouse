@@ -81,7 +81,8 @@ def sensor_data():
 
 @app.route('/sensor_data_live')
 def sensor_data_live():
-    return jsonify(load(sensor_file, {}))  # Always read fresh from disk
+    return jsonify(latest_data)  # returns data in RAM
+
 
 @app.route('/get_thresholds')
 def get_thresholds():
